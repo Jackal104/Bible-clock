@@ -1,273 +1,427 @@
-# Bible Clock
+📖 Bible Clock - Enhanced Digital Scripture Display
 
-## Overview
+A sophisticated digital clock that displays Bible verses corresponding to the current time, featuring intelligent chapter summaries, multi-version support, voice control, and comprehensive hardware integration for Raspberry Pi.
 
-The Bible Clock is a Raspberry Pi-based application that displays Bible verses on an e-ink display with advanced features:
+✨ Features
 
-### Features
+🕐 Time-Based Scripture Display
 
-1. **Mode Cycling (Button 1)**
-   - **Clock Mode**: Displays verses based on current time (hour = chapter, minute = verse)
-   - **Day Mode**: Displays verses related to historical biblical events for the current date
+•
+Verse Mapping: Each minute displays a corresponding Bible verse (3:16 PM shows a verse from chapter 3, verse 16)
 
-2. **Version Toggle (Button 2)**
-   - **KJV Only**: Displays only King James Version text
-   - **KJV + Amplified**: Side-by-side display of KJV and Amplified Bible versions
+•
+Book Summaries: At :00 minutes, displays random comprehensive summaries from all 66 Bible books
 
-3. **Improved Layout**
-   - Verse text centered on screen
-   - Bible reference displayed in bottom right corner
-   - Mode indicator in top left (Day mode shows current date)
+•
+Smart Fallback: Intelligent verse selection when exact matches aren't available
 
-## Quick Start
+•
+96.5% Coverage: Extensive verse database covering most time combinations
 
-### Basic Usage
+📚 Multi-Version Bible Support
 
-```bash
-# Run with current time (simulation mode)
-python bin/run_clock.py --simulate --once
+•
+KJV Only Mode: Classic King James Version display
 
-# Run continuously on Raspberry Pi
+•
+KJV + Amplified Mode: Side-by-side comparison with auto-resizing text
+
+•
+Button Toggle: Easy switching between versions with visual feedback
+
+🎮 Three-Button Control System
+
+•
+Button 1 (GPIO 18): Mode cycling (Clock ↔ Day modes)
+
+•
+Button 2 (GPIO 19): Bible version toggle (KJV ↔ KJV+Amplified)
+
+•
+Button 3 (GPIO 20): Audio/Voice activation hub
+
+🔊 Advanced Audio & Voice Features
+
+•
+Text-to-Speech: Reads current verse aloud with configurable voice settings
+
+•
+Wake Word Detection: "Hey Bible" activates voice commands hands-free
+
+•
+Voice Commands: "Explain", "Repeat", "Reference", "Mode", "Time", "Expand"
+
+•
+ChatGPT Integration: AI-powered verse explanations and biblical insights
+
+•
+Chapter Expansion: Voice command to display remaining verses in sequence
+
+🖥️ Intelligent Display System
+
+•
+Auto-Resizing Text: Dynamically adjusts font size to fit any content length
+
+•
+Temporary Mode Indicators: Shows mode/version changes for 3 seconds
+
+•
+Cross-Platform Fonts: Optimized for both Windows simulation and Raspberry Pi
+
+•
+E-Ink Optimization: Designed for Waveshare 10.3" E-Ink displays
+
+🔧 Professional Hardware Integration
+
+•
+Raspberry Pi 3B+ with optimized GPIO management
+
+•
+Waveshare 10.3" E-Ink Display HAT with SPI configuration
+
+•
+ReSpeaker 2-Mics Pi HAT for voice recognition
+
+•
+CQRobot 3W 4Ω Speakers with proper amplification
+
+•
+Pimoroni HAT Hack3r for multi-HAT compatibility
+
+•
+No-solder installation with comprehensive wiring guides
+
+🚀 Quick Start
+
+Windows Testing (Simulation Mode)
+
+1.
+Clone and Setup:
+
+2.
+Install Dependencies:
+
+3.
+Configure Environment:
+
+4.
+Run Simulation:
+
+Raspberry Pi Deployment
+
+1.
+Hardware Setup: Follow the comprehensive Hardware Installation Guide
+
+2.
+Environment Configuration: See Environment Setup Guide
+
+3.
+Automated Installation:
+
+🎯 Usage Examples
+
+Basic Operation
+
+Bash
+
+
+# Standard operation
 python bin/run_clock.py
 
-# Test specific time and modes
-python bin/run_clock.py --time "11:17 AM" --mode clock --version kjv_only --simulate --once
-```
-
-### Button Controls
-
-- **Button 1**: Cycle between Clock Mode ↔ Day Mode
-- **Button 2**: Toggle between KJV Only ↔ KJV + Amplified
-
-### Command Line Options
-
-```bash
-python bin/run_clock.py [OPTIONS]
-
-Options:
-  --simulate              Run in simulation mode (no GPIO)
-  --debug                 Enable debug output
-  --once                  Run once and exit (for testing)
-  --time TIME            Specific time to display (e.g., "2:37 PM")
-  --mode {clock,day}     Set initial display mode
-  --version {kjv_only,kjv_amplified}  Set initial version display
-  --status               Show status information and exit
-  --test-buttons         Test button functionality
-```
-
-## Features in Detail
-
-### Clock Mode
-- Uses current time to select verses
-- Hour (1-12) = Bible chapter
-- Minute (0-59) = Bible verse
-- Randomly selects from available books with matching chapter:verse
-- 96.5% time coverage (695 out of 720 possible times)
-
-### Day Mode
-- Displays verses related to historical biblical events
-- Falls back to monthly events if no specific date events
-- Falls back to seasonal events if no monthly events
-- Covers major biblical holidays and significant dates
-
-### Historical Events Coverage
-- **30 specific dates** with biblical significance
-- **12 months** with themed events
-- **4 seasons** with appropriate verses
-- Examples: Christmas (Dec 25), Passover (April), Creation themes (January)
-
-### Version Display
-- **KJV Only**: Clean, centered layout with verse text and reference
-- **KJV + Amplified**: Side-by-side comparison with divider line
-- Automatic fallback to KJV only if Amplified verse not available
-
-## Installation
-
-### Requirements
-```bash
-pip install -r requirements.txt
-```
-
-### Dependencies
-- pillow>=10.0.0
-- python-dateutil>=2.8.2
-- RPi.GPIO>=0.7.1 (Raspberry Pi only)
-- fake-rpi>=0.7.1 (simulation)
-
-### Font Installation
-The application uses RobotoMono font, included in `assets/fonts/`
-
-## Configuration
-
-### Environment Variables
-Create `.env` file:
-```
-SIMULATE=1          # 1 for simulation, 0 for Raspberry Pi
-DEBUG=1             # 1 for debug output, 0 for quiet
-FONT_SIZE=24        # Base font size
-DISPLAY_WIDTH=1200  # Display width in pixels
-DISPLAY_HEIGHT=825  # Display height in pixels
-```
-
-### Hardware Configuration
-- **Button 1 (Mode)**: GPIO Pin 18 (default)
-- **Button 2 (Version)**: GPIO Pin 19 (default)
-- **E-ink Display**: Compatible with Waveshare displays
-
-## File Structure
-
-```
-bible-clock/
-├── bin/
-│   ├── run_clock_original.py     # Original application
-│   └── run_clock.py              # Main application ⭐
-├── src/
-│   ├── config.py                 # Configuration constants
-│   ├── verse_database.py         # KJV Bible database handler
-│   ├── verse_selector.py         # Time-based verse selection
-│   ├── historical_events.py      # Day-based verse selection ⭐
-│   ├── amplified_bible.py        # Amplified Bible support ⭐
-│   ├── display.py                # Enhanced display rendering ⭐
-│   ├── buttons.py                # Enhanced button controls ⭐
-│   └── time_utils.py             # Time parsing utilities
-├── data/
-│   └── kjv.json                  # Complete KJV Bible (31,102 verses)
-├── assets/fonts/
-│   └── RobotoMono-Regular.ttf    # Display font
-├── tests/                        # Unit tests
-├── requirements.txt              # Python dependencies
-├── .env                          # Environment configuration
-└── README.md                     # This file
-```
-
-⭐ = New or significantly enhanced files
-
-## Testing
-
-### Unit Tests
-```bash
-python -m unittest discover tests/ -v
-```
-
-### Feature Testing
-```bash
-# Test button functionality
-python bin/run_clock.py --test-buttons --simulate --debug
-
-# Test different modes
-python bin/run_clock.py --mode day --simulate --once
-python bin/run_clock.py --mode clock --simulate --once
-
-# Test version toggle
-python bin/run_clock.py --version kjv_amplified --simulate --once
-
-# Check application status
-python bin/run_clock.py --status --simulate
-```
-
-## Deployment
-
-### Raspberry Pi Setup
-1. Install Raspberry Pi OS
-2. Enable GPIO and SPI interfaces
-3. Install Python dependencies
-4. Connect e-ink display and buttons
-5. Run: `python bin/run_clock.py`
-
-### Simulation Mode
-For development and testing on any computer:
-```bash
+# Simulation mode for testing
 python bin/run_clock.py --simulate --debug
-```
 
-## Troubleshooting
+# Test specific time
+python bin/run_clock.py --simulate --time "3:16 PM"
 
-### Common Issues
 
-1. **Font Loading Error**
-   - Ensure RobotoMono font is in `assets/fonts/`
-   - Application falls back to default font if custom font fails
+Testing Features
 
-2. **GPIO Errors**
-   - Use `--simulate` flag for non-Raspberry Pi systems
-   - Check GPIO pin connections and permissions
+Bash
 
-3. **Display Issues**
-   - Verify e-ink display library installation
-   - Check display dimensions in configuration
 
-4. **Missing Verses**
-   - Some time combinations don't have matching verses
-   - Application provides graceful fallbacks
+# Test all three buttons
+python bin/run_clock.py --test-buttons --simulate
 
-### Debug Mode
-Enable debug output to see detailed operation:
-```bash
-python bin/run_clock.py --debug --simulate
-```
+# Test audio functionality
+python bin/run_clock.py --test-audio --simulate
 
-## Statistics
+# Show system status
+python bin/run_clock.py --status --simulate
 
-### Verse Coverage
-- **Total Bible Books**: 66
-- **Available Times**: 695 out of 720 possible (96.5%)
-- **Total Verses**: 31,102 in KJV database
 
-### Historical Events
-- **Specific Dates**: 30 events
-- **Monthly Coverage**: 12 months
-- **Seasonal Coverage**: 4 seasons
-- **Overall Coverage**: 8.2% of calendar days with specific events
+Voice Commands
 
-## API Reference
+After pressing Button 3 or saying "Hey Bible":
 
-### BibleClock Class
+•
+"Explain" - Get AI explanation of current verse
 
-```python
-clock = BibleClock(simulate=True, debug=True)
+•
+"Repeat" - Re-read the current verse
 
-# Run once
-clock.run_once(target_time=datetime.now())
+•
+"Reference" - Speak just the verse reference
 
-# Run continuously
-clock.run_continuous()
+•
+"Expand" - Show remaining verses in the chapter
 
-# Simulate button presses
-clock.simulate_button_press(1)  # Mode cycle
-clock.simulate_button_press(2)  # Version toggle
+•
+"Mode" - Announce current display mode
 
-# Get status
-status = clock.get_status()
-```
+•
+"Time" - Announce current time
 
-### Button Controls
+🔒 Security & Privacy
 
-```python
-buttons = ButtonManager(simulate=True)
-buttons.set_mode_callback(on_mode_change)
-buttons.set_version_callback(on_version_change)
-```
+Environment Variables
 
-### Display Management
+•
+Secure Configuration: Sensitive data (WiFi passwords, API keys) stored in .env
 
-```python
-display = DisplayManager(simulate=True)
-display.display_verse(book, verse_ref, verse_text, current_time, mode, version)
-```
+•
+Git Protection: .env automatically ignored by version control
 
-## License
+•
+Template System: .env.template provides safe setup guide for users
 
-This project is for personal use. Bible text is from the King James Version (public domain) and sample Amplified Bible verses (demonstration purposes).
+API Key Setup
 
-## Support
+1.
+Get OpenAI API key from platform.openai.com
 
-For issues or questions:
-1. Check the troubleshooting section
-2. Run with `--debug` flag for detailed output
-3. Use `--status` to check system configuration
-4. Test with `--simulate` mode first
+2.
+Add to .env: CHATGPT_API_KEY=your_actual_key_here
 
----
+3.
+Configure other settings as needed
 
-**Bible Clock v2.0** - Now with mode cycling, version toggle, and improved layout!
+🛠️ Hardware Requirements
+
+Core Components
+
+•
+Raspberry Pi 3B+ (or newer)
+
+•
+Waveshare 10.3" E-Ink Display HAT
+
+•
+ReSpeaker 2-Mics Pi HAT
+
+•
+CQRobot 3W 4Ω Speakers (pair)
+
+•
+3x Momentary Push Buttons
+
+•
+Pimoroni HAT Hack3r (for multi-HAT setup)
+
+Power & Connectivity
+
+•
+2.5A Power Supply (minimum)
+
+•
+MicroSD Card (32GB+ recommended)
+
+•
+WiFi Connection for time sync and API access
+
+Optional Enhancements
+
+•
+Safe Shutdown Button circuit
+
+•
+Custom Enclosure for finished appearance
+
+•
+External Antenna for improved WiFi
+
+📊 Technical Specifications
+
+Coverage Statistics
+
+•
+Total Time Slots: 720 (12 hours × 60 minutes)
+
+•
+Verse Coverage: 683 slots (94.9%)
+
+•
+Book Summary Coverage: 12 slots (1.7%) - :00 minutes
+
+•
+Total Coverage: 695 slots (96.5%)
+
+Supported Bible Versions
+
+•
+King James Version (KJV): Primary text source
+
+•
+Amplified Bible: Side-by-side comparison mode
+
+•
+Extensible: Framework supports additional versions
+
+Audio Specifications
+
+•
+TTS Engine: pyttsx3 with configurable voice settings
+
+•
+Voice Recognition: ReSpeaker 2-Mics HAT with wake word detection
+
+•
+Audio Output: 3W speakers with proper amplification
+
+•
+Sample Rate: 16kHz for voice recognition
+
+🔧 Configuration Options
+
+Display Settings
+
+Plain Text
+
+
+FONT_SIZE=48                    # Base font size
+DISPLAY_WIDTH=1200             # E-ink display width
+DISPLAY_HEIGHT=825             # E-ink display height
+
+
+Audio Settings
+
+Plain Text
+
+
+TTS_VOICE_RATE=150             # Speech rate (words per minute)
+TTS_VOICE_VOLUME=0.8           # Volume level (0.0-1.0)
+WAKE_WORD=Hey Bible            # Custom wake word
+
+
+Hardware Settings
+
+Plain Text
+
+
+BUTTON1_PIN=18                 # Mode button GPIO pin
+BUTTON2_PIN=19                 # Version button GPIO pin
+BUTTON3_PIN=20                 # Audio button GPIO pin
+
+
+🧪 Development & Testing
+
+Simulation Mode
+
+•
+Cross-platform testing on Windows/Mac/Linux
+
+•
+Fake GPIO simulation for development
+
+•
+Debug output for troubleshooting
+
+•
+Time manipulation for testing specific verses
+
+Hardware Validation
+
+•
+Automated testing scripts for all components
+
+•
+GPIO pin verification and conflict detection
+
+•
+Audio system testing with feedback
+
+•
+Display functionality validation
+
+📚 Documentation
+
+•
+Hardware Installation Guide: Complete hardware setup
+
+•
+Environment Setup Guide: Security and configuration
+
+•
+Enhanced Features Summary: Detailed feature overview
+
+•
+Complete Implementation Guide: Technical details
+
+🤝 Contributing
+
+1.
+Fork the repository
+
+2.
+Create a feature branch: git checkout -b feature/amazing-feature
+
+3.
+Commit changes: git commit -m 'Add amazing feature'
+
+4.
+Push to branch: git push origin feature/amazing-feature
+
+5.
+Open a Pull Request
+
+Development Setup
+
+Bash
+
+
+# Clone your fork
+git clone https://github.com/yourusername/Bible-clock.git
+cd Bible-clock
+
+# Create development environment
+python -m venv bible_clock_env
+source bible_clock_env/Scripts/activate
+
+# Install development dependencies
+pip install -r requirements.txt
+
+# Run tests
+python bin/run_clock.py --test-buttons --simulate
+
+
+🙏 Acknowledgments - Matt Knight with partnership of Manus AI and ChatGPT
+
+•
+Bible Text: King James Version and Amplified Bible
+
+•
+Hardware: Waveshare, ReSpeaker, Pimoroni communities
+
+•
+Libraries: Pillow, python-dateutil, pyttsx3, and other open-source projects
+
+•
+Inspiration: Digital scripture display and IoT maker communities
+
+📞 Support
+
+•
+Issues: GitHub Issues
+
+•
+Discussions: GitHub Discussions
+
+•
+Documentation: Check the docs/ directory for detailed guides
+
+
+
+
+
+Built with ❤️ for digital scripture study and IoT enthusiasts
 
