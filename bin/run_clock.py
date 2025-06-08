@@ -1,90 +1,125 @@
 #!/usr/bin/env python3
 """
-Bible Clock
-A Raspberry Pi Bible clock that displays verses based on time or historical events.
+Bible Clock - Enhanced Version
+A digital clock that displays Bible verses corresponding to the current time.
 
 Features:
-- Mode cycling: Clock mode (time-based) ↔ Day mode (historical events)
-- Version toggle: KJV only ↔ KJV + Amplified side-by-side
-- Improved layout: Centered verse text, reference in bottom right
-- Button controls: Button 1 (mode), Button 2 (version)
+- Time-based verse display (hour:minute = chapter:verse)
+- Auto-resizing text to fit display
+- Temporary mode indicators (3 seconds)
+- Random Bible book summaries at :00 minutes
+- Three-button control (Mode, Version, Audio/Voice)
+- Cross-platform font support
+- Audio, voice, and ChatGPT integration
+- Side-by-side KJV + Amplified display
 """
 
 import sys
 import os
-import time
 import signal
 import argparse
-from datetime import datetime, date
-from typing import Optional
+import time
+from datetime import datetime
+from typing import Optional, Tuple
 
 # Add src directory to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import config
-from verse_database import VerseDatabase
-from verse_selector import VerseSelector
-from historical_events import HistoricalEvents
 from display import DisplayManager
 from buttons import ButtonManager
-from time_utils import parse_12_hour_time, format_time_12_hour
+from bible_book_verse_selector import BibleBookVerseSelector
+
+# Import audio and voice components with error handling
+try:
+    from audio_manager import AudioManager
+    AUDIO_AVAILABLE = True
+except ImportError:
+    AUDIO_AVAILABLE = False
+    AudioManager = None
+
+try:
+    from voice_controller import VoiceController
+    VOICE_AVAILABLE = True
+except ImportError:
+    VOICE_AVAILABLE = False
+    VoiceController = None
+
+try:
+    from chatgpt_explainer import ChatGPTExplainer
+    CHATGPT_AVAILABLE = True
+except ImportError:
+    CHATGPT_AVAILABLE = False
+    ChatGPTExplainer = None
 
 
 class BibleClock:
-    """Bible Clock with mode cycling and version toggle."""
+    """Main Bible Clock application with enhanced features."""
     
-    def __init__(self, simulate: bool = False, debug: bool = False):
+    def __init__(self, simulate: bool = None, debug: bool = None):
         """
         Initialize the Bible Clock.
         
         Args:
-            simulate: Run in simulation mode
-            debug: Enable debug output
+            simulate: Force simulation mode. Uses config.SIMULATE if None.
+            debug: Force debug mode. Uses config.DEBUG if None.
         """
-        self.simulate = simulate
-        self.debug = debug
+        self.simulate = simulate if simulate is not None else config.SIMULATE
+        self.debug = debug if debug is not None else config.DEBUG
         self.running = False
         
-        # Initialize time synchronization
-        from time_sync import TimeSync
-        self.time_sync = TimeSync(debug=debug)
-        
-        # Ensure time is synchronized on startup
-        if not simulate:
-            if debug:
-                print("Synchronizing time...")
-            sync_success = self.time_sync.ensure_time_sync()
-            if debug:
-                if sync_success:
-                    print("Time synchronization successful")
-                else:
-                    print("Warning: Time synchronization failed - using system time")
+        # Current state
+        self.current_mode = config.DEFAULT_MODE
+        self.current_version = config.DEFAULT_VERSION
+        self.current_verse_data = None
         
         # Initialize components
-        self.verse_db = VerseDatabase()
-        self.verse_selector = VerseSelector(self.verse_db)
-        self.historical_events = HistoricalEvents()
-        self.display = DisplayManager(simulate=simulate)
-        self.buttons = ButtonManager(simulate=simulate)
+        self.display = DisplayManager(simulate=self.simulate)
+        self.verse_selector = BibleBookVerseSelector()
+        self.buttons = ButtonManager(simulate=self.simulate)
         
-        # Current state
-        self.current_mode = config.CLOCK_MODE
-        self.current_version = config.KJV_ONLY
-        self.last_update_time = None
+        # Initialize audio components
+        if AUDIO_AVAILABLE:
+            self.audio_manager = AudioManager(simulate=self.simulate, debug=self.debug)
+        else:
+            self.audio_manager = None
+            if self.debug:
+                print("Audio manager not available")
+        
+        # Initialize voice controller
+        if VOICE_AVAILABLE:
+            self.voice_controller = VoiceController(simulate=self.simulate, debug=self.debug)
+        else:
+            self.voice_controller = None
+            if self.debug:
+                print("Voice controller not available")
+        
+        # Initialize ChatGPT explainer
+        if CHATGPT_AVAILABLE:
+            self.chatgpt_explainer = ChatGPTExplainer(debug=self.debug)
+        else:
+            self.chatgpt_explainer = None
+            if self.debug:
+                print("ChatGPT explainer not available")
         
         # Setup button callbacks
         self.buttons.set_mode_callback(self._on_mode_change)
         self.buttons.set_version_callback(self._on_version_change)
         
-        # Setup signal handlers
+        # Setup third button callback if audio is available
+        if hasattr(self.buttons, 'set_audio_callback'):
+            self.buttons.set_audio_callback(self._on_audio_button)
+        
+        # Setup voice command callback if voice controller is available
+        if self.voice_controller and hasattr(self.voice_controller, 'set_command_callback'):
+            self.voice_controller.set_command_callback(self._on_voice_command)
+        
+        # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
         
         if self.debug:
-            print("Bible Clock initialized")
-            print(f"Mode: {self.current_mode}")
-            print(f"Version: {self.current_version}")
-            print(f"Simulation: {self.simulate}")
+            print("Bible Clock initialized successfully!")
     
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals."""
@@ -97,6 +132,10 @@ class BibleClock:
         if self.debug:
             print(f"Mode changed to: {new_mode}")
         
+        # Trigger temporary mode display
+        if hasattr(self.display, 'trigger_mode_display'):
+            self.display.trigger_mode_display(f"Mode: {new_mode.title()}")
+        
         # Immediately update display with new mode
         self._update_display()
     
@@ -106,146 +145,277 @@ class BibleClock:
         if self.debug:
             print(f"Version changed to: {new_version}")
         
+        # Trigger temporary mode display for version change
+        version_text = f"Version: {new_version.replace('_', ' ').title()}"
+        if hasattr(self.display, 'trigger_mode_display'):
+            self.display.trigger_mode_display(version_text)
+        
         # Immediately update display with new version
         self._update_display()
     
+    def _on_audio_button(self):
+        """Handle third button press - Audio/TTS/Voice activation."""
+        if self.debug:
+            print("Audio button pressed")
+        
+        # Show audio mode indicator
+        if hasattr(self.display, 'trigger_mode_display'):
+            self.display.trigger_mode_display("Audio Mode")
+        
+        # Read current verse aloud if audio is available
+        if self.audio_manager and self.current_verse_data:
+            try:
+                book, reference, text = self.current_verse_data
+                full_text = f"{reference}. {text}"
+                if hasattr(self.audio_manager, 'speak_text'):
+                    self.audio_manager.speak_text(full_text)
+            except Exception as e:
+                if self.debug:
+                    print(f"Audio playback error: {e}")
+        
+        # Activate voice listening if available
+        if self.voice_controller:
+            try:
+                if hasattr(self.voice_controller, 'start_listening'):
+                    self.voice_controller.start_listening()
+            except Exception as e:
+                if self.debug:
+                    print(f"Voice activation error: {e}")
+    
+    def _on_voice_command(self, command: str):
+        """Handle voice commands from wake word detection."""
+        if self.debug:
+            print(f"Voice command received: {command}")
+        
+        command_lower = command.lower()
+        
+        if "explain" in command_lower or "meaning" in command_lower:
+            self._handle_explain_command()
+        elif "repeat" in command_lower or "read again" in command_lower:
+            self._handle_repeat_command()
+        elif "reference" in command_lower:
+            self._handle_reference_command()
+        elif "mode" in command_lower:
+            self._handle_mode_command()
+        elif "time" in command_lower:
+            self._handle_time_command()
+        elif "expand" in command_lower:
+            self._handle_expand_command()
+        else:
+            # Custom question for ChatGPT
+            self._handle_custom_question(command)
+    
+    def _handle_explain_command(self):
+        """Handle 'explain' voice command."""
+        if self.chatgpt_explainer and self.current_verse_data:
+            try:
+                book, reference, text = self.current_verse_data
+                explanation = self.chatgpt_explainer.explain_verse(book, reference, text)
+                if self.audio_manager and hasattr(self.audio_manager, 'speak_text'):
+                    self.audio_manager.speak_text(explanation)
+            except Exception as e:
+                if self.debug:
+                    print(f"Explanation error: {e}")
+    
+    def _handle_repeat_command(self):
+        """Handle 'repeat' voice command."""
+        if self.audio_manager and self.current_verse_data:
+            try:
+                book, reference, text = self.current_verse_data
+                full_text = f"{reference}. {text}"
+                if hasattr(self.audio_manager, 'speak_text'):
+                    self.audio_manager.speak_text(full_text)
+            except Exception as e:
+                if self.debug:
+                    print(f"Repeat error: {e}")
+    
+    def _handle_reference_command(self):
+        """Handle 'reference' voice command."""
+        if self.audio_manager and self.current_verse_data:
+            try:
+                book, reference, text = self.current_verse_data
+                if hasattr(self.audio_manager, 'speak_text'):
+                    self.audio_manager.speak_text(f"The reference is {reference}")
+            except Exception as e:
+                if self.debug:
+                    print(f"Reference error: {e}")
+    
+    def _handle_mode_command(self):
+        """Handle 'mode' voice command."""
+        if self.audio_manager:
+            try:
+                mode_text = f"Current mode is {self.current_mode.replace('_', ' ')}"
+                if hasattr(self.audio_manager, 'speak_text'):
+                    self.audio_manager.speak_text(mode_text)
+            except Exception as e:
+                if self.debug:
+                    print(f"Mode announcement error: {e}")
+    
+    def _handle_time_command(self):
+        """Handle 'time' voice command."""
+        if self.audio_manager:
+            try:
+                current_time = datetime.now().strftime("%I:%M %p")
+                time_text = f"The current time is {current_time}"
+                if hasattr(self.audio_manager, 'speak_text'):
+                    self.audio_manager.speak_text(time_text)
+            except Exception as e:
+                if self.debug:
+                    print(f"Time announcement error: {e}")
+    
+    def _handle_expand_command(self):
+        """Handle 'expand' voice command to show rest of chapter."""
+        if self.debug:
+            print("Expand command - showing rest of chapter")
+        # TODO: Implement chapter expansion functionality
+        # This would show remaining verses in the current chapter
+    
+    def _handle_custom_question(self, question: str):
+        """Handle custom questions for ChatGPT."""
+        if self.chatgpt_explainer and self.current_verse_data:
+            try:
+                book, reference, text = self.current_verse_data
+                response = self.chatgpt_explainer.answer_question(question, book, reference, text)
+                if self.audio_manager and hasattr(self.audio_manager, 'speak_text'):
+                    self.audio_manager.speak_text(response)
+            except Exception as e:
+                if self.debug:
+                    print(f"Custom question error: {e}")
+    
     def _get_verse_for_mode(self, target_time: datetime = None) -> tuple:
         """
-        Get verse based on current mode.
+        Get verse based on current mode and time.
         
         Args:
-            target_time: Time to get verse for. Uses current time if None.
+            target_time: Specific time to use. Uses current time if None.
             
         Returns:
-            Tuple of (book, verse_ref, verse_text, description)
+            Tuple of (book_name, verse_reference, verse_text)
         """
         if target_time is None:
             target_time = datetime.now()
         
-        if self.current_mode == config.CLOCK_MODE:
-            # Clock mode: time-based verse selection
-            hour = target_time.hour
-            minute = target_time.minute
-            
-            # Convert to 12-hour format for verse selection
-            if hour == 0:
-                display_hour = 12
-            elif hour > 12:
-                display_hour = hour - 12
-            else:
-                display_hour = hour
-            
-            verse_info = self.verse_selector.select_verse_for_time(display_hour, minute)
-            if verse_info:
-                book, verse_ref, text = verse_info
-                description = "Clock Mode"
-                return (book, verse_ref, text, description)
-            else:
-                # Fallback
-                return ("John", "John 3:16", 
-                       "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.",
-                       "Clock Mode (Fallback)")
+        # Convert to 12-hour format
+        hour = target_time.hour
+        if hour == 0:
+            hour = 12
+        elif hour > 12:
+            hour -= 12
         
-        else:  # DAY_MODE
-            # Day mode: historical events-based verse selection
-            month, day, year, month_name, season = self.get_current_date_info()
-            
-            if self.debug:
-                print(f"Day mode: {month_name} {day}, {year} ({season})")
-            
-            # Use the historical events system with comprehensive date info
-            target_date = target_time.date()
-            verse_ref, description = self.historical_events.get_random_verse_for_date(target_date)
-            
-            # Get the verse text from database
-            try:
-                # Parse the verse reference
-                parts = verse_ref.split()
-                if len(parts) >= 2:
-                    book = ' '.join(parts[:-1])
-                    chapter_verse = parts[-1]
-                    chapter, verse = map(int, chapter_verse.split(':'))
-                    
-                    verse_info = self.verse_db.get_verse(book, chapter, verse)
-                    if verse_info:
-                        text = verse_info['text']
-                        return (book, verse_ref, text, f"Day Mode - {description}")
-                    else:
-                        # Try to find any verse from this book/chapter
-                        verses = self.verse_db.get_verses_by_chapter(book, chapter)
-                        if verses:
-                            first_verse = verses[0]
-                            text = first_verse['text']
-                            verse_ref = f"{book} {chapter}:{first_verse['verse']}"
-                            return (book, verse_ref, text, f"Day Mode - {description}")
-            except:
-                pass
-            
-            # Ultimate fallback for day mode
-            return ("Psalms", "Psalms 118:24", 
-                   "This is the day which the LORD hath made; we will rejoice and be glad in it.",
-                   f"Day Mode - {description}")
+        minute = target_time.minute
+        
+        # Get verse based on current mode
+        if self.current_mode == config.DAY_MODE:
+            # Day mode: use day of year for additional randomization
+            day_of_year = target_time.timetuple().tm_yday
+            # Modify selection based on day (implementation can vary)
+            pass
+        
+        # Get verse for the time
+        verse_data = self.verse_selector.get_verse_for_display(hour, minute)
+        
+        if verse_data:
+            return verse_data
+        else:
+            # Fallback verse
+            return ("Ecclesiastes", "Ecclesiastes 3:1", 
+                   "To every thing there is a season, and a time to every purpose under the heaven:")
     
     def _update_display(self, target_time: datetime = None):
         """Update the display with current verse."""
-        if target_time is None:
-            target_time = datetime.now()
-        
-        # Get verse for current mode
-        book, verse_ref, verse_text, description = self._get_verse_for_mode(target_time)
-        
-        # Format current time
-        current_time_str = format_time_12_hour(target_time.hour, target_time.minute)
-        
-        # Display the verse
-        self.display.display_verse(
-            book=book,
-            verse_ref=verse_ref,
-            verse_text=verse_text,
-            current_time=current_time_str,
-            mode=self.current_mode,
-            version=self.current_version
-        )
-        
-        if self.debug:
-            print(f"Display updated: {verse_ref} ({description})")
-            print(f"Mode: {self.current_mode}, Version: {self.current_version}")
+        try:
+            # Get verse for current time and mode
+            verse_data = self._get_verse_for_mode(target_time)
+            self.current_verse_data = verse_data
+            
+            if verse_data:
+                book_name, verse_reference, verse_text = verse_data
+                
+                if self.debug:
+                    print(f"Displaying: {verse_reference}")
+                    print(f"Text: {verse_text[:100]}...")
+                
+                # Get current time string
+                current_time_str = target_time.strftime("%I:%M %p") if target_time else datetime.now().strftime("%I:%M %p")
+                
+                # Display based on current version setting
+                if self.current_version == config.KJV_AMPLIFIED:
+                    # Display with amplified version (side-by-side)
+                    self.display.display_verse(
+                        book=book_name,
+                        verse_ref=verse_reference, 
+                        verse_text=verse_text,
+                        current_time=current_time_str,
+                        mode=self.current_mode,
+                        version=config.KJV_AMPLIFIED
+                    )
+                else:
+                    # KJV only
+                    self.display.display_verse(
+                        book=book_name,
+                        verse_ref=verse_reference,
+                        verse_text=verse_text, 
+                        current_time=current_time_str,
+                        mode=self.current_mode,
+                        version=config.KJV_ONLY
+                    )
+            
+        except Exception as e:
+            if self.debug:
+                print(f"Display update error: {e}")
+            # Show error message on display with proper parameters
+            try:
+                current_time_str = datetime.now().strftime("%I:%M %p")
+                self.display.display_verse(
+                    book="Error",
+                    verse_ref="System Error", 
+                    verse_text=f"Display update failed: {str(e)}",
+                    current_time=current_time_str,
+                    mode=self.current_mode,
+                    version=self.current_version
+                )
+            except Exception as display_error:
+                if self.debug:
+                    print(f"Error display failed: {display_error}")
     
     def run_once(self, target_time: datetime = None):
-        """Run the clock once and update display."""
+        """Run the clock once (for testing)."""
         if self.debug:
             print("Running Bible Clock once...")
         
         self._update_display(target_time)
         
         if self.debug:
-            print("Single update completed")
+            print("Single run completed")
     
-    def run_continuous(self):
-        """Run the clock continuously, updating every minute."""
+    def run(self):
+        """Run the main clock loop."""
         self.running = True
         
         if self.debug:
-            print("Starting continuous Bible Clock...")
-            print("Press Ctrl+C to stop")
+            print("Starting Bible Clock main loop...")
         
         try:
+            last_minute = -1
+            
             while self.running:
                 current_time = datetime.now()
+                current_minute = current_time.minute
                 
-                # Update display if minute has changed or first run
-                if (self.last_update_time is None or 
-                    current_time.minute != self.last_update_time.minute):
-                    
+                # Update display when minute changes
+                if current_minute != last_minute:
                     self._update_display(current_time)
-                    self.last_update_time = current_time
+                    last_minute = current_minute
                 
-                # Sleep for a short time to avoid busy waiting
+                # Sleep for a short time to avoid excessive CPU usage
                 time.sleep(1)
                 
         except KeyboardInterrupt:
             if self.debug:
                 print("\nKeyboard interrupt received")
+        except Exception as e:
+            if self.debug:
+                print(f"Main loop error: {e}")
         finally:
             self.stop()
     
@@ -256,173 +426,173 @@ class BibleClock:
         if self.debug:
             print("Stopping Bible Clock...")
         
-        # Cleanup components
-        self.buttons.cleanup()
-        self.display.sleep_display()
+        # Cleanup components with error handling
+        try:
+            if hasattr(self.buttons, 'cleanup'):
+                self.buttons.cleanup()
+        except Exception as e:
+            if self.debug:
+                print(f"Button cleanup error: {e}")
+        
+        try:
+            if hasattr(self.display, 'cleanup'):
+                self.display.cleanup()
+        except Exception as e:
+            if self.debug:
+                print(f"Display cleanup error: {e}")
+        
+        try:
+            if hasattr(self.display, 'sleep_display'):
+                self.display.sleep_display()
+        except Exception as e:
+            if self.debug:
+                print(f"Display sleep error: {e}")
+        
+        # Cleanup audio and voice components with error handling
+        if self.voice_controller:
+            try:
+                if hasattr(self.voice_controller, 'stop'):
+                    self.voice_controller.stop()
+                elif hasattr(self.voice_controller, 'cleanup'):
+                    self.voice_controller.cleanup()
+                elif hasattr(self.voice_controller, 'shutdown'):
+                    self.voice_controller.shutdown()
+            except Exception as e:
+                if self.debug:
+                    print(f"Voice controller cleanup error: {e}")
+        
+        if self.audio_manager:
+            try:
+                if hasattr(self.audio_manager, 'cleanup'):
+                    self.audio_manager.cleanup()
+                elif hasattr(self.audio_manager, 'stop'):
+                    self.audio_manager.stop()
+                elif hasattr(self.audio_manager, 'shutdown'):
+                    self.audio_manager.shutdown()
+            except Exception as e:
+                if self.debug:
+                    print(f"Audio manager cleanup error: {e}")
         
         if self.debug:
             print("Bible Clock stopped")
     
-    def get_current_date_info(self):
-        """Get current date information for day mode."""
-        if hasattr(self, 'time_sync'):
-            return self.time_sync.get_date_info()
-        else:
-            # Fallback if time_sync not available
-            from datetime import datetime
-            now = datetime.now()
-            month = now.month
-            day = now.day
-            year = now.year
-            month_name = now.strftime("%B")
-            
-            # Determine season
-            if month in [12, 1, 2]:
-                season = "Winter"
-            elif month in [3, 4, 5]:
-                season = "Spring"
-            elif month in [6, 7, 8]:
-                season = "Summer"
-            else:
-                season = "Autumn"
-            
-            return month, day, year, month_name, season
-    
     def get_status(self) -> dict:
+        """Get current status of the Bible Clock."""
         return {
             'running': self.running,
-            'mode': self.current_mode,
-            'version': self.current_version,
             'simulate': self.simulate,
             'debug': self.debug,
-            'last_update': self.last_update_time.isoformat() if self.last_update_time else None,
-            'display_info': self.display.get_display_info(),
-            'button_status': self.buttons.get_status(),
-            'verse_stats': self.verse_selector.get_statistics(),
-            'events_stats': self.historical_events.get_statistics(),
-            'time_sync_status': self.time_sync.get_status() if hasattr(self, 'time_sync') else None
+            'current_mode': self.current_mode,
+            'current_version': self.current_version,
+            'audio_available': AUDIO_AVAILABLE and self.audio_manager is not None,
+            'voice_available': VOICE_AVAILABLE and self.voice_controller is not None,
+            'chatgpt_available': CHATGPT_AVAILABLE and self.chatgpt_explainer is not None,
+            'current_verse': self.current_verse_data[1] if self.current_verse_data else None
         }
-        
-        # Add current date info if available
-        try:
-            month, day, year, month_name, season = self.get_current_date_info()
-            status['current_date_info'] = {
-                'month': month,
-                'day': day, 
-                'year': year,
-                'month_name': month_name,
-                'season': season
-            }
-        except:
-            status['current_date_info'] = None
-            
-        return status
-    
-    def simulate_button_press(self, button_number: int):
-        """Simulate button press for testing."""
-        if button_number == 1:
-            self.buttons.simulate_button1_press()
-        elif button_number == 2:
-            self.buttons.simulate_button2_press()
-        else:
-            print(f"Invalid button number: {button_number}")
 
 
 def main():
-    """Main entry point for the Bible Clock."""
-    parser = argparse.ArgumentParser(description='Bible Clock with mode cycling and version toggle')
+    """Main entry point."""
+    parser = argparse.ArgumentParser(description='Bible Clock - Enhanced Version')
     parser.add_argument('--simulate', action='store_true', 
                        help='Run in simulation mode (no GPIO)')
-    parser.add_argument('--debug', action='store_true', 
+    parser.add_argument('--debug', action='store_true',
                        help='Enable debug output')
-    parser.add_argument('--once', action='store_true', 
+    parser.add_argument('--once', action='store_true',
                        help='Run once and exit (for testing)')
-    parser.add_argument('--time', type=str, 
-                       help='Specific time to display (e.g., "2:37 PM")')
-    parser.add_argument('--mode', choices=[config.CLOCK_MODE, config.DAY_MODE],
-                       help='Set initial display mode')
-    parser.add_argument('--version', choices=[config.KJV_ONLY, config.KJV_AMPLIFIED],
-                       help='Set initial version display')
-    parser.add_argument('--status', action='store_true',
-                       help='Show status information and exit')
+    parser.add_argument('--time', type=str,
+                       help='Specific time to display (format: "HH:MM AM/PM")')
     parser.add_argument('--test-buttons', action='store_true',
                        help='Test button functionality')
+    parser.add_argument('--test-audio', action='store_true',
+                       help='Test audio functionality')
+    parser.add_argument('--test-voice', action='store_true',
+                       help='Test voice recognition')
+    parser.add_argument('--status', action='store_true',
+                       help='Show status and exit')
     
     args = parser.parse_args()
     
-    # Create Bible Clock instance
-    clock = BibleClock(simulate=args.simulate, debug=args.debug)
-    
-    # Set initial mode and version if specified
-    if args.mode:
-        clock.current_mode = args.mode
-        clock.buttons.set_mode(args.mode)
-    
-    if args.version:
-        clock.current_version = args.version
-        clock.buttons.set_version(args.version)
-    
     try:
+        # Create Bible Clock instance
+        clock = BibleClock(simulate=args.simulate, debug=args.debug)
+        
+        # Handle status request
         if args.status:
-            # Show status and exit
             status = clock.get_status()
             print("Bible Clock Status:")
             for key, value in status.items():
                 print(f"  {key}: {value}")
-            return
+            return 0
         
+        # Handle test modes
         if args.test_buttons:
-            # Test button functionality
             print("Testing button functionality...")
-            print("Current mode:", clock.current_mode)
-            print("Current version:", clock.current_version)
-            
-            print("\nSimulating Button 1 press (mode cycle)...")
-            clock.simulate_button_press(1)
-            print("New mode:", clock.current_mode)
-            
-            print("\nSimulating Button 2 press (version toggle)...")
-            clock.simulate_button_press(2)
-            print("New version:", clock.current_version)
-            
-            return
+            clock.buttons.simulate_button1_press()
+            time.sleep(1)
+            clock.buttons.simulate_button2_press()
+            time.sleep(1)
+            if hasattr(clock.buttons, 'simulate_button3_press'):
+                clock.buttons.simulate_button3_press()
+            return 0
         
-        if args.once:
-            # Run once
-            target_time = None
-            if args.time:
+        if args.test_audio:
+            print("Testing audio functionality...")
+            if clock.audio_manager:
                 try:
-                    hour, minute = parse_12_hour_time(args.time)
-                    # Create a datetime with the parsed time
-                    now = datetime.now()
-                    target_time = now.replace(hour=hour if hour != 12 else 0 if 'AM' in args.time.upper() else 12, 
-                                            minute=minute, second=0, microsecond=0)
-                    if 'PM' in args.time.upper() and hour != 12:
-                        target_time = target_time.replace(hour=target_time.hour + 12)
-                except ValueError as e:
-                    print(f"Error parsing time: {e}")
-                    return 1
-            
+                    if hasattr(clock.audio_manager, 'speak_text'):
+                        clock.audio_manager.speak_text("Bible Clock audio test")
+                    else:
+                        print("Audio manager available but no speak_text method")
+                except Exception as e:
+                    print(f"Audio test error: {e}")
+            else:
+                print("Audio not available")
+            return 0
+        
+        if args.test_voice:
+            print("Testing voice recognition...")
+            if clock.voice_controller:
+                try:
+                    print("Voice controller available - test implementation needed")
+                except Exception as e:
+                    print(f"Voice test error: {e}")
+            else:
+                print("Voice recognition not available")
+            return 0
+        
+        # Handle specific time
+        target_time = None
+        if args.time:
+            try:
+                target_time = datetime.strptime(args.time, "%I:%M %p")
+                target_time = target_time.replace(year=datetime.now().year,
+                                                month=datetime.now().month,
+                                                day=datetime.now().day)
+            except ValueError:
+                print(f"Invalid time format: {args.time}. Use format like '3:16 PM'")
+                return 1
+        
+        # Run the clock
+        if args.once:
             clock.run_once(target_time)
-            
-            if args.simulate:
-                print("\nPress Enter to exit...")
-                input()
         else:
-            # Run continuously
-            clock.run_continuous()
-    
+            clock.run()
+        
+        return 0
+        
+    except KeyboardInterrupt:
+        print("\nShutdown requested by user")
+        return 0
     except Exception as e:
-        print(f"Error: {e}")
-        if args.debug:
-            import traceback
-            traceback.print_exc()
+        print(f"Fatal error: {e}")
         return 1
-    
     finally:
-        clock.stop()
-    
-    return 0
+        # Ensure cleanup
+        try:
+            clock.stop()
+        except:
+            pass
 
 
 if __name__ == "__main__":
