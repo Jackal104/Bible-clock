@@ -1,0 +1,36 @@
+[Unit]
+Description=Bible Clock Display Service
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=pi
+Group=gpio
+WorkingDirectory=/home/pi/bible-clock-enhanced
+Environment=PATH=/home/pi/bible-clock-enhanced/venv/bin:/usr/local/bin:/usr/bin:/bin
+ExecStartPre=/bin/sleep 30
+ExecStartPre=/home/pi/bible-clock-enhanced/venv/bin/python /home/pi/bible-clock-enhanced/bin/validate_config.py
+ExecStart=/home/pi/bible-clock-enhanced/venv/bin/python /home/pi/bible-clock-enhanced/bin/run_clock.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bible-clock
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/pi/bible-clock-enhanced /var/log /tmp
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target
+

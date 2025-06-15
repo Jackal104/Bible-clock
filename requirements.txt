@@ -1,7 +1,15 @@
-pillow>=10.0.0
-python-dateutil>=2.8.2
-RPi.GPIO>=0.7.1
-fake-rpi>=0.7.1
-tzdata>=2023.3
+# Bible Clock Enhanced - Python Dependencies
+
+# Core dependencies
+Pillow>=10.0.0
 requests>=2.31.0
+python-dateutil>=2.8.2
+psutil>=5.9.0
+
+# Optional dependencies for enhanced features
+python-dotenv>=1.0.0
+
+# Development and testing dependencies (optional)
+pytest>=7.0.0
+pytest-cov>=4.0.0
 
