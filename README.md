@@ -2,7 +2,7 @@
 
 **Version:** 2.0 Enhanced Edition  
 **Date:** June 15, 2025  
-**Author:** Manus AI  
+**Author:** Matt Knight
 
 ## Overview
 
